@@ -141,6 +141,24 @@ export default function Home() {
   const cardAutoReady = cardCapture && granted && focused && (state.phase === 'idle' || (state.conversing && state.phase === 'listening'));
   const { steady, moveCount, available } = useSteadiness(watching || cardAutoReady);
   const armed = useRef(true);
+  // After a voice command clears the prompt (e.g. "add it" → add_item → clear_prompt), delay
+  // auto-capture so the next auto-listen can capture the user's follow-up ("checkout") before
+  // the camera fires on a new item and kills the mic.
+  const scanCoolRef = useRef(true);
+  const [scanCoolTick, setScanCoolTick] = useState(0);
+  const prevPrompt = useRef(state.livePrompt);
+  useEffect(() => {
+    const had = prevPrompt.current;
+    prevPrompt.current = state.livePrompt;
+    if (had && !state.livePrompt && state.conversing) {
+      scanCoolRef.current = false;
+      const t = setTimeout(() => {
+        scanCoolRef.current = true;
+        setScanCoolTick((n) => n + 1);
+      }, 3000);
+      return () => { clearTimeout(t); scanCoolRef.current = true; };
+    }
+  }, [state.livePrompt, state.conversing]);
   const cardArmed = useRef(true);
   // Whether the sensor has had time to restart after a step change. A ref gates
   // the same-render check (effects see ref changes synchronously); the counter
@@ -174,11 +192,13 @@ export default function Home() {
     if (barcode && barcode.code !== lastScannedCode.current) armed.current = true;
   }, [barcode]);
   useEffect(() => {
-    if (!autoReady || !available || !steady || !armed.current) return;
+    if (!autoReady || !available || !steady || !armed.current || !scanCoolRef.current) return;
     armed.current = false;
     lastScannedCode.current = barcode?.code ?? null;
     void scan();
-  }, [autoReady, available, steady, barcode, scan]);
+    // scanCoolTick is in deps only to re-run the effect when the cooldown expires;
+    // the actual gate uses scanCoolRef for synchronous blocking.
+  }, [autoReady, available, steady, barcode, scan, scanCoolTick]);
 
   // --- focus corners ----------------------------------------------------------
   const scanShowing = !!state.lastScan && state.view === 'camera' && !state.declined && !state.receipt;
