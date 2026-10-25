@@ -143,6 +143,7 @@ const MAX_ANSWER_MS = 15_000;
 const BUSY: Phase[] = ['listening', 'capturing', 'awaiting_scan', 'submitting'];
 
 const TRANSCRIPT_MAX = 30;
+const SCAN_RE = /\b(scan|look|what(?:'s| is) this|what(?:'s| is) that|capture|take (?:a )?photo)\b/i;
 
 const pushLine = (t: TranscriptLine[], line: TranscriptLine) =>
   t[t.length - 1]?.id === line.id ? t : [...t, line].slice(-TRANSCRIPT_MAX);
@@ -303,6 +304,8 @@ export interface AgentApi {
   endConversation: () => void;
   /** Stop the mic if it's open (for onboarding card capture while conversing). */
   quietMic: () => void;
+  /** Register the camera scan function so voice commands like "scan this" can trigger it. */
+  registerScanCapture: (fn: (() => void) | null) => void;
 }
 
 const AgentContext = createContext<AgentApi | null>(null);
@@ -658,12 +661,20 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const sendTranscript = useCallback(
     async (transcript: string, confidence: number) => {
+      if (conversing.current && !stateRef.current.livePrompt && SCAN_RE.test(transcript) && scanCapture.current) {
+        console.log(`[flow] voice-triggered scan: "${transcript}"`);
+        dispatch({ type: 'idle' });
+        scanCapture.current();
+        return;
+      }
       dispatch({ type: 'submit' });
       try {
         const promptId = stateRef.current.lastScan ? await ensurePrompt() : stateRef.current.livePrompt?.id;
+        console.log(`[flow] sendTranscript: "${transcript}" lastScan=${!!stateRef.current.lastScan} livePrompt=${stateRef.current.livePrompt?.id ?? 'null'}`);
         const res = await api.command(transcript, confidence, promptId);
         applyCommand(res);
       } catch (e) {
+        console.log(`[flow] command error: ${e instanceof Error ? e.message : String(e)}`);
         handleError(e);
       }
     },
@@ -978,6 +989,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const scanCapture = useRef<(() => void) | null>(null);
+  // eslint-disable-next-line react-hooks/immutability
+  const registerScanCapture = useCallback((fn: (() => void) | null) => { scanCapture.current = fn; }, []);
+
   const beginCapture = useCallback(() => {
     if (speaker.speaking) bargeIn();
     quietMic();
@@ -1195,11 +1210,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       startConversation,
       endConversation,
       quietMic,
+      registerScanCapture,
     }),
     [
       state, talkTap, talkHoldStart, talkHoldEnd, repeat, setListenHandler, beginCapture, scanFrame, addToCart, skip,
       refreshCart, refreshCards, startCheckin, leaveStore, reviewItem, removeLast, askClearCart, confirmClearCart, startCheckout,
       confirmCheckout, resetDemo, sayLocal, sayThen, showView, answer, dismiss, startConversation, endConversation, quietMic,
+      registerScanCapture,
     ],
   );
 

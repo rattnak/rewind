@@ -46,7 +46,7 @@ const CARD_RATIO = 1.586;
 export default function Home() {
   const { palette } = useA11y();
   const { profile, loaded } = useProfile();
-  const { state, beginCapture, scanFrame, sayLocal, startCheckin } = useAgent();
+  const { state, beginCapture, scanFrame, sayLocal, startCheckin, registerScanCapture } = useAgent();
   const [camera, requestCamera] = useCameraPermissions();
   const focused = useIsFocused();
   const { width, height } = useWindowDimensions();
@@ -121,6 +121,12 @@ export default function Home() {
     await scanFrame(shot.uri, shot.barcode, shot.discard, { width: shot.width, height: shot.height });
   }, [onboarding, addingCard, busy, granted, beginCapture, scanFrame, sayLocal]);
 
+  // Register scan for voice-triggered capture ("scan this", "what is this").
+  useEffect(() => {
+    registerScanCapture(() => void scan());
+    return () => registerScanCapture(null);
+  }, [scan, registerScanCapture]);
+
   // Auto-capture when steady on a new item. Moving the phone or a new barcode re-arms it. The
   // motion sensor keeps running while a result is showing, so moving on to the next item counts
   // even if the last question was never answered by voice; a finished or expired question (no live
@@ -133,32 +139,13 @@ export default function Home() {
     state.view === 'camera' &&
     !state.declined &&
     !state.receipt;
-  // In conversation mode the phase is usually 'listening' (the mic stays open), so allow
-  // auto-capture there too — the scan interrupts the listen, which is fine.
-  const autoReady = watching && (state.phase === 'idle' || (state.conversing && state.phase === 'listening')) && !state.livePrompt;
+  // In conversation mode, scanning is voice-driven ("scan this"), not automatic.
+  const autoReady = watching && !state.conversing && state.phase === 'idle' && !state.livePrompt;
   // Card steps (onboarding and Add a card): the same steadiness check takes the card photo once the
   // agent has finished the instruction and the phone is held still on the card. Tap still works.
   const cardAutoReady = cardCapture && granted && focused && (state.phase === 'idle' || (state.conversing && state.phase === 'listening'));
   const { steady, moveCount, available } = useSteadiness(watching || cardAutoReady);
   const armed = useRef(true);
-  // After a voice command clears the prompt (e.g. "add it" → add_item → clear_prompt), delay
-  // auto-capture so the next auto-listen can capture the user's follow-up ("checkout") before
-  // the camera fires on a new item and kills the mic.
-  const scanCoolRef = useRef(true);
-  const [scanCoolTick, setScanCoolTick] = useState(0);
-  const prevPrompt = useRef(state.livePrompt);
-  useEffect(() => {
-    const had = prevPrompt.current;
-    prevPrompt.current = state.livePrompt;
-    if (had && !state.livePrompt && state.conversing) {
-      scanCoolRef.current = false;
-      const t = setTimeout(() => {
-        scanCoolRef.current = true;
-        setScanCoolTick((n) => n + 1);
-      }, 3000);
-      return () => { clearTimeout(t); scanCoolRef.current = true; };
-    }
-  }, [state.livePrompt, state.conversing]);
   const cardArmed = useRef(true);
   // Whether the sensor has had time to restart after a step change. A ref gates
   // the same-render check (effects see ref changes synchronously); the counter
@@ -192,13 +179,11 @@ export default function Home() {
     if (barcode && barcode.code !== lastScannedCode.current) armed.current = true;
   }, [barcode]);
   useEffect(() => {
-    if (!autoReady || !available || !steady || !armed.current || !scanCoolRef.current) return;
+    if (!autoReady || !available || !steady || !armed.current) return;
     armed.current = false;
     lastScannedCode.current = barcode?.code ?? null;
     void scan();
-    // scanCoolTick is in deps only to re-run the effect when the cooldown expires;
-    // the actual gate uses scanCoolRef for synchronous blocking.
-  }, [autoReady, available, steady, barcode, scan, scanCoolTick]);
+  }, [autoReady, available, steady, barcode, scan]);
 
   // --- focus corners ----------------------------------------------------------
   const scanShowing = !!state.lastScan && state.view === 'camera' && !state.declined && !state.receipt;

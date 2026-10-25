@@ -9,10 +9,10 @@ export const Phrases = {
   /** Spoken if /v1/scan has not answered after 1000 ms (0.7). */
   looking: 'Looking.',
   /** Talk button tap (business spec 6.5 A). */
-  greeting: 'How may I help you today?',
+  greeting: 'Welcome to Rewind. How can I help?',
   /** Return from background (1.2). */
   welcomeBack: (n: number) =>
-    `Welcome back, you have ${n} ${n === 1 ? 'item' : 'items'} in your cart. Say repeat that to hear the last message.`,
+    `Welcome back. ${n} ${n === 1 ? 'item' : 'items'} in your cart.`,
   /** No envelope to speak because the backend is unreachable. */
   offline: "I can't reach Rewind right now. Please check the connection and try again.",
   cameraDenied:
@@ -38,27 +38,27 @@ export const Phrases = {
  */
 export const Onboarding = {
   cameraWhy:
-    'Rewind uses your camera to read product labels, prices, and your cards. Photos are not saved. Tap Allow camera, then choose Allow.',
+    'I need your camera to scan products and cards. Tap Allow.',
   micWhy:
-    'Rewind uses your microphone so you can talk to it. It only listens while you tap or hold the round button. Tap Allow microphone, then choose Allow.',
+    'I need your microphone so we can talk. Tap Allow.',
   confirmCardName: (full: string) => `Your name is ${full}. Is that right?`,
   typeName: "I couldn't confirm your name from the card. Please type it, or scan the card again.",
   greet: (first: string) => `Thank you, ${first}.`,
-  phoneDemo: (phone: string) =>
-    `Hi, I'm Rewind. I tell you what a product is, what it costs, and which card to pay with. This is a prototype, so I'm verifying this phone with the demo number ${phone}. Your phone is verified.`,
+  phoneDemo: (_phone: string) =>
+    `Hi, I'm Rewind. Let's get you set up.`,
   askInsurance:
-    "Now your insurance card. Hold it flat inside the corners, about a hand length from the phone, and keep still. I'll take the photo for you.",
+    "Now your insurance card. Hold it still inside the corners.",
   confirmInsurance: (insurer: string, plan: string | null, hasRx: boolean) =>
     `Your insurance is ${insurer}${plan ? `, ${plan}` : ''}.${hasRx ? ' It shows prescription benefits.' : ''} Is that right?`,
   askPayment: (first: boolean) =>
     first
-      ? "Now your HSA or FSA Visa card. Hold it flat inside the corners, about a hand length from the phone, and keep still. I'll take the photo for you."
-      : "Now your everyday Visa card, credit or debit. Hold it flat inside the corners, about a hand length from the phone, and keep still. I'll take the photo for you.",
+      ? "Now your HSA or FSA card. Hold it still inside the corners."
+      : "Now your everyday card. Hold it still inside the corners.",
   askCardType: 'Is this Visa card an HSA card, an FSA card, a credit card, or a debit card?',
   confirmCard: (label: string, last4: string | null) =>
     `I see ${label}${last4 ? ` ending in ${last4.split('').join(' ')}` : ''}. Is that right?`,
   cardAdded: (label: string) => `${label} added. Do you want to add another card?`,
   unclear: 'I could not read that card. Try again with more light, and hold it still.',
   done: (first: string) =>
-    `You're all set, ${first}. Point your phone at a product and tap anywhere to scan. Your profile and settings are at the top right.`,
+    `All set, ${first}. Say scan this to scan a product.`,
 } as const;
