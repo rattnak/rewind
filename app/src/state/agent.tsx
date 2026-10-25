@@ -474,8 +474,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refreshCart();
-    void refreshCards();
+    void api.resetDemo(1).then((res) => {
+      dispatch({ type: 'cart', cart: res.cart });
+      dispatch({ type: 'cards', cards: res.cards });
+    }).catch(() => {
+      void refreshCart();
+      void refreshCards();
+    });
     void refreshHealth();
     const t = setInterval(refreshHealth, 60_000);
     return () => clearInterval(t);
