@@ -540,6 +540,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const applyCommand = useCallback(
     (res: CommandResponse) => {
+      console.log(`[flow] applyCommand: action=${res.action} voice="${res.voice?.text?.slice(0, 60)}" expects=${res.voice?.expects_response}`);
       switch (res.action) {
         case 'repeat': {
           const last = stateRef.current.lastVoice;
@@ -693,6 +694,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     // The mic opened by itself and heard nothing: stay quiet and wait for the question's silence prompt.
     const heardNothing = () => {
       autoMisses.current += 1;
+      console.log(`[flow] heardNothing: misses=${autoMisses.current} conversing=${conversing.current} livePrompt=${!!stateRef.current.livePrompt}`);
       dispatch({ type: 'listen_done' });
       if (stateRef.current.livePrompt) armSilence();
       // In conversation mode, keep listening even without a livePrompt (the loop
@@ -704,6 +706,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
     };
     const rec = await mic.stop();
+    console.log(`[flow] stopListening: auto=${auto} hasRec=${!!rec} phase=${stateRef.current.phase}`);
     if (!rec) {
       if (auto) heardNothing();
       else dispatch({ type: 'idle' });
@@ -713,6 +716,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     try {
       const handler = listenHandler.current;
       const { transcript, confidence } = await api.stt(rec.uri, handler?.hint);
+      console.log(`[flow] STT result: "${transcript}" confidence=${confidence} handler=${!!handler}`);
       if (auto && !transcript.trim()) {
         heardNothing();
         return;
@@ -723,9 +727,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'idle' });
         handler.fn(transcript);
       } else {
+        console.log(`[flow] sendTranscript: "${transcript}" lastScan=${!!stateRef.current.lastScan} livePrompt=${stateRef.current.livePrompt?.id ?? 'null'}`);
         await sendTranscript(transcript, confidence);
       }
     } catch (e) {
+      console.log(`[flow] STT/command error: ${e instanceof Error ? e.message : String(e)}`);
       if (auto && e instanceof ApiError && e.code === 'E_STT_LOW_CONFIDENCE') heardNothing();
       else handleError(e);
     } finally {
@@ -744,7 +750,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     }
     if (!isLocalVoice(voice)) haptic.done();
     if (pendingAlert.current && pendingAlert.current.request_id !== voice.request_id) {
-      // Never drop an alert: replay it in full after the interruption (1.2).
       const alert = pendingAlert.current;
       pendingAlert.current = null;
       say(alert);
@@ -755,15 +760,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       void startListening(true);
       return;
     }
-    // Conversation mode: listen after every line (the loop keeps going until the user ends it).
-    // Outside conversation mode: listen only when a question was asked or onboarding expects a spoken answer.
     const shouldAutoListen = conversing.current
       || voice.expects_response
       || (listenHandler.current && !ranAfter);
-    // Don't open the mic if the speaker still has queued lines (e.g. a greeting followed by a
-    // confirmation question). The mic would hear the agent's own next line through the speaker,
-    // and AEC might not fully cancel it, leading to self-triggered answers. The next line's
-    // onSpeechDone will re-evaluate.
+    console.log(`[flow] onSpeechDone: conversing=${conversing.current} expects=${voice.expects_response} handler=${!!listenHandler.current} shouldAutoListen=${shouldAutoListen} misses=${autoMisses.current} holding=${holding.current} queued=${speaker.queued}`);
     if (shouldAutoListen && autoMisses.current < 2 && !holding.current && !speaker.queued) {
       autoListening.current = true;
       void startListening(true);
@@ -949,6 +949,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   /** Stop the mic if it's open — shared by beginCapture and onboarding's takeCard. */
   const quietMic = useCallback(() => {
     if (stateRef.current.phase === 'listening') {
+      console.log('[flow] quietMic: stopping mic during listening phase');
       pauseWatch.current?.();
       pauseWatch.current = null;
       if (listenTimer.current) clearTimeout(listenTimer.current);
