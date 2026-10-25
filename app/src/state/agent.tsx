@@ -573,13 +573,28 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           if (res.result) dispatch({ type: 'cart', cart: res.result as Cart });
           dispatch({ type: 'view', view: 'cart' });
           break;
-        case 'checkout_preview':
+        case 'checkout_preview': {
+          const preview = res.result as CheckoutPreview;
+          const pId = preview.voice?.prompt_id;
           checkoutKey.current = randomUUID();
           dispatch({ type: 'declined', message: null });
-          dispatch({ type: 'preview', preview: res.result as CheckoutPreview });
+          dispatch({ type: 'preview', preview });
           dispatch({ type: 'receipt', receipt: null });
           dispatch({ type: 'view', view: 'checkout' });
-          break;
+          if (pId) {
+            dispatch({ type: 'submit' });
+            api.checkoutConfirm(checkoutKey.current, pId, true).then((receipt) => {
+              dispatch({ type: 'receipt', receipt });
+              dispatch({ type: 'preview', preview: null });
+              dispatch({ type: 'clear_prompt' });
+              dispatch({ type: 'cart', cart: { groups: [], total_cents: 0 } });
+              checkoutKey.current = null;
+              void refreshCards();
+              say(receipt.voice);
+            }).catch((e) => handleError(e));
+          }
+          return;
+        }
         case 'checkout_confirmed':
           dispatch({ type: 'receipt', receipt: res.result as CheckoutResult });
           dispatch({ type: 'preview', preview: null });
@@ -616,7 +631,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       say(res.voice);
     },
-    [say, refreshCards, startWatch],
+    [say, refreshCards, startWatch, handleError],
   );
 
   /**
