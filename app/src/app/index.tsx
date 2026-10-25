@@ -21,7 +21,7 @@ import { Phrases } from '@/lib/phrases';
 import { useProfile } from '@/lib/profile';
 import { useResponsive } from '@/lib/responsive';
 import { inflate, photoToScreen, StageContext, type Rect } from '@/lib/stage';
-import { useSteadiness } from '@/lib/steady';
+import { STEADY_MS, useSteadiness } from '@/lib/steady';
 import { useAgent } from '@/state/agent';
 
 /** A barcode sighting older than this no longer moves the focus corners. */
@@ -142,14 +142,30 @@ export default function Home() {
   const { steady, moveCount, available } = useSteadiness(watching || cardAutoReady);
   const armed = useRef(true);
   const cardArmed = useRef(true);
+  // Whether the sensor has had time to restart after a step change. A ref gates
+  // the same-render check (effects see ref changes synchronously); the counter
+  // state triggers a re-run when the timer fires.
+  const cardReadyRef = useRef(true);
+  const [cardReadyTick, setCardReadyTick] = useState(0);
+  // Movement re-arms immediately (the user moved to a new card).
+  useEffect(() => { cardArmed.current = true; }, [moveCount]);
+  // A new card step delays arming so the steadiness sensor has time to restart.
   useEffect(() => {
-    cardArmed.current = true; // a new card step, or the card was moved: ready for one more photo
-  }, [moveCount, cardCapture]);
+    cardArmed.current = true;
+    cardReadyRef.current = false;
+    const t = setTimeout(() => {
+      cardReadyRef.current = true;
+      setCardReadyTick((n) => n + 1); // bump to re-trigger the auto-capture effect
+    }, STEADY_MS + 200);
+    return () => clearTimeout(t);
+  }, [cardCapture]);
   useEffect(() => {
-    if (!cardAutoReady || !available || !steady || !cardArmed.current) return;
+    if (!cardAutoReady || !available || !steady || !cardArmed.current || !cardReadyRef.current) return;
     cardArmed.current = false;
     onboardingCapture.current?.();
-  }, [cardAutoReady, available, steady]);
+    // cardReadyTick is in deps only to re-run the effect when the delay timer fires;
+    // the actual gate uses cardReadyRef for synchronous same-render blocking.
+  }, [cardAutoReady, available, steady, cardReadyTick]);
   const lastScannedCode = useRef<string | null>(null);
   useEffect(() => {
     armed.current = true;

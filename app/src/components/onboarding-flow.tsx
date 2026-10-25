@@ -99,7 +99,7 @@ export function OnboardingFlow({
   startAt?: 'payment';
   onDone?: () => void;
 }) {
-  const { sayLocal, sayThen, setListenHandler, refreshCards } = useAgent();
+  const { sayLocal, sayThen, setListenHandler, refreshCards, quietMic } = useAgent();
   const { screenReaderOn } = useA11y();
   const { profile, update } = useProfile();
   const [chosen, setStep] = useState<Step | null>(null);
@@ -218,6 +218,7 @@ export function OnboardingFlow({
     if (busy.current) return;
     busy.current = true;
     setReading(true);
+    quietMic();
     haptic.capture();
     const kind = step === 'insurance' ? 'insurance' : 'payment';
     const shot = await capture();

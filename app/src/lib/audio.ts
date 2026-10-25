@@ -74,6 +74,11 @@ class Speaker {
     return this.current !== null;
   }
 
+  /** True when more lines are waiting in the queue (the current one is about to finish). */
+  get queued() {
+    return this.queue.length > 0;
+  }
+
   speak(v: VoiceRequest) {
     if (v.priority === 'alert' && this.current) {
       const cut = this.current;

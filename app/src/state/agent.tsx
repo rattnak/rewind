@@ -301,6 +301,8 @@ export interface AgentApi {
   startConversation: () => void;
   /** Leave conversation mode: the agent goes back to push-to-talk. */
   endConversation: () => void;
+  /** Stop the mic if it's open (for onboarding card capture while conversing). */
+  quietMic: () => void;
 }
 
 const AgentContext = createContext<AgentApi | null>(null);
@@ -693,6 +695,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       autoMisses.current += 1;
       dispatch({ type: 'listen_done' });
       if (stateRef.current.livePrompt) armSilence();
+      // In conversation mode, keep listening even without a livePrompt (the loop
+      // must not stall just because the user paused). After two misses the loop
+      // stops to avoid an infinite empty-listen cycle.
+      else if (conversing.current && autoMisses.current < 2) {
+        autoListening.current = true;
+        void startListening(true);
+      }
     };
     const rec = await mic.stop();
     if (!rec) {
@@ -751,7 +760,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     const shouldAutoListen = conversing.current
       || voice.expects_response
       || (listenHandler.current && !ranAfter);
-    if (shouldAutoListen && autoMisses.current < 2 && !holding.current) {
+    // Don't open the mic if the speaker still has queued lines (e.g. a greeting followed by a
+    // confirmation question). The mic would hear the agent's own next line through the speaker,
+    // and AEC might not fully cancel it, leading to self-triggered answers. The next line's
+    // onSpeechDone will re-evaluate.
+    if (shouldAutoListen && autoMisses.current < 2 && !holding.current && !speaker.queued) {
       autoListening.current = true;
       void startListening(true);
       return;
@@ -933,19 +946,23 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   // --- scanning -------------------------------------------------------------
 
-  const beginCapture = useCallback(() => {
-    if (speaker.speaking) bargeIn();
-    // In conversation mode the mic may be open; stop it so the capture can use the camera cleanly.
+  /** Stop the mic if it's open — shared by beginCapture and onboarding's takeCard. */
+  const quietMic = useCallback(() => {
     if (stateRef.current.phase === 'listening') {
       pauseWatch.current?.();
       pauseWatch.current = null;
       if (listenTimer.current) clearTimeout(listenTimer.current);
       listenTimer.current = null;
-      void mic.stop(); // discard whatever was recorded
+      void mic.stop();
     }
+  }, []);
+
+  const beginCapture = useCallback(() => {
+    if (speaker.speaking) bargeIn();
+    quietMic();
     haptic.capture();
     dispatch({ type: 'capture' });
-  }, []);
+  }, [quietMic]);
 
   const scanFrame = useCallback(
     async (imageUri: string, barcode: string | null, discard: () => void, photo: { width: number; height: number }) => {
@@ -1156,11 +1173,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       sayThen,
       startConversation,
       endConversation,
+      quietMic,
     }),
     [
       state, talkTap, talkHoldStart, talkHoldEnd, repeat, setListenHandler, beginCapture, scanFrame, addToCart, skip,
       refreshCart, refreshCards, startCheckin, leaveStore, reviewItem, removeLast, askClearCart, confirmClearCart, startCheckout,
-      confirmCheckout, resetDemo, sayLocal, sayThen, showView, answer, dismiss, startConversation, endConversation,
+      confirmCheckout, resetDemo, sayLocal, sayThen, showView, answer, dismiss, startConversation, endConversation, quietMic,
     ],
   );
 

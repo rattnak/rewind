@@ -32,9 +32,10 @@ export function useSteadiness(active: boolean): Steadiness {
   const stillSince = useRef<number | null>(null);
   const movingSince = useRef<number | null>(null);
   const counted = useRef(false);
-
   useEffect(() => {
     if (!active) return;
+    last.current = null;
+    stillSince.current = null;
     let sub: { remove: () => void } | null = null;
     let cancelled = false;
     Accelerometer.isAvailableAsync().then((ok) => {
